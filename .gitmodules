@@ -1,0 +1,12 @@
+[submodule "vendor/websocketpp"]
+	path = vendor/websocketpp
+	url = https://github.com/zaphoyd/websocketpp
+[submodule "json"]
+	path = json
+	url = https://github.com/nlohmann/json
+[submodule "vendor/json"]
+	path = vendor/json
+	url = https://github.com/nlohmann/json
+[submodule "websocketpp"]
+	path = websocketpp
+	url = https://github.com/zaphoyd/websocketpp
