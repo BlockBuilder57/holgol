@@ -25,4 +25,4 @@ set_property(TARGET holgol_server PROPERTY CXX_STANDARD 17)
 set_property(TARGET holgol_server PROPERTY CXX_STANDARD_REQUIRED ON)
 
 # Link with any needed libraries
-target_link_libraries(holgol_server ${CMAKE_THREAD_LIBS_INIT} Boost::system nlohmann_json::nlohmann_json)
+target_link_libraries(holgol_server ${CMAKE_THREAD_LIBS_INIT} Boost::system Boost::json)

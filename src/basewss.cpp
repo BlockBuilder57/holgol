@@ -3,7 +3,8 @@
 
 using namespace std::placeholders;
 
-BaseWebsocketServer::BaseWebsocketServer()
+BaseWebsocketServer::BaseWebsocketServer(boost::asio::io_context &context)
+	: context(context)
 {
 }
 BaseWebsocketServer::~BaseWebsocketServer()
@@ -11,9 +12,24 @@ BaseWebsocketServer::~BaseWebsocketServer()
 	//TODO erase all users eventually
 }
 
+boost::asio::ip::address BaseWebsocketServer::GetIPAddress(websocketpp::connection_hdl handle) 
+{
+	websocketpp::lib::error_code ec;
+	BaseWebsocketServer::server::connection_ptr con = _server.get_con_from_hdl(handle, ec);
+
+	if(ec)
+		std::cout << "somehow failed at getting an IP address: too bad!";
+
+	return con->get_raw_socket().remote_endpoint().address();
+}
+
 void BaseWebsocketServer::Start(uint16_t port)
 {
-	_server.init_asio();
+	// get rid of most of the connection stuffs
+	_server.clear_access_channels(websocketpp::log::alevel::all);
+	_server.clear_error_channels(websocketpp::log::elevel::all);
+
+	_server.init_asio(&context);
 
 	_server.set_open_handler(std::bind(&BaseWebsocketServer::OnOpen, this, _1));
 	_server.set_message_handler(std::bind(&BaseWebsocketServer::OnMessage, this, _1, _2));
@@ -43,24 +59,36 @@ void BaseWebsocketServer::OnMessage(websocketpp::connection_hdl handle, message_
 {
 }
 
-void BaseWebsocketServer::BroadcastBinary(bytemessage_t &bytes)
+void BaseWebsocketServer::Send(websocketpp::connection_hdl handle, std::string message)
 {
-	if(bytes.empty())
+	websocketpp::lib::error_code ec;
+	server::connection_ptr con = _server.get_con_from_hdl(handle, ec);
+
+	if(ec)
 		return;
 
-	websocketpp::lib::error_code ec;
+	con->send(message);
+}
+
+void BaseWebsocketServer::SendJSON(websocketpp::connection_hdl handle, boost::json::object obj)
+{
+	Send(handle, boost::json::serialize(obj));
+}
+
+void BaseWebsocketServer::Broadcast(std::string message)
+{
+	if(message.empty())
+		return;
 
 	// range-for to look at all users
 	// TODO: this should be locked
 	for(auto &hdl : users)
 	{
-		server::connection_ptr con = _server.get_con_from_hdl(hdl, ec);
-
-		if(ec)
-			return;
-
-		// this will invoke the (void* const, size_t, opcode)
-		// overload that defaults the opcode to binary
-		con->send((void *)bytes.data(), bytes.size() * sizeof(uint8_t));
+		Send(hdl, message);
 	}
+}
+
+void BaseWebsocketServer::BroadcastJSON(boost::json::object obj)
+{
+	Broadcast(boost::json::serialize(obj));
 }

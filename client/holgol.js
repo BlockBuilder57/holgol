@@ -10,6 +10,7 @@ holgol = {
 		
 		holgol.websocket.onopen = () => {holgol.logger("websocket connected");};
 		holgol.websocket.onclose = () => {holgol.logger("websocket disconnected");};
+		holgol.websocket.onmessage = holgol.onwsmessage;
 		
 		// query
 		
@@ -38,9 +39,15 @@ holgol = {
 		if (holgol.query.querySubmit)
 			holgol.query.querySubmit.addEventListener("click", holgol.query.submit);
 		
+		holgol.query.updateUX();
+		
 		// options
 		
 		//holgol.options
+	},
+	
+	onwsmessage: function (message) {
+		holgol.logger("recieved " + message.data);
 	},
 	
 	logger: function (message) {

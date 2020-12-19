@@ -1,18 +1,20 @@
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
+#include <boost/json.hpp>
+#include <common.h>
 
 #include <vector>
-#include <set> 
-#include <cstdint>
+#include <set>
 
 struct BaseWebsocketServer
 {
 	typedef websocketpp::server<websocketpp::config::asio> server;
 	typedef server::message_ptr message_ptr;
-	typedef std::vector<uint8_t> bytemessage_t;
 	
-	BaseWebsocketServer();
+	BaseWebsocketServer(boost::asio::io_context& context);
 	~BaseWebsocketServer();
+
+	boost::asio::ip::address GetIPAddress(websocketpp::connection_hdl handle);
 	
 	void Start(uint16_t port);
 	
@@ -21,13 +23,19 @@ struct BaseWebsocketServer
 	virtual void OnClose(websocketpp::connection_hdl handle);
 	virtual void OnMessage(websocketpp::connection_hdl handle, message_ptr message) = 0;
 	
+	// send to specific user
+	void Send(websocketpp::connection_hdl handle, std::string message);
+	void SendJSON(websocketpp::connection_hdl handle, boost::json::object obj);
+
 	// broadcast to all users
-	void BroadcastBinary(bytemessage_t& bytes);
+	void Broadcast(std::string message);
+	void BroadcastJSON(boost::json::object obj);
 	
 protected: // inheriters would want this
 
+	boost::asio::io_context& context;
 	std::set<websocketpp::connection_hdl, std::owner_less<websocketpp::connection_hdl>> users;
 	
-private:
+//private:
 	server _server;
 };
