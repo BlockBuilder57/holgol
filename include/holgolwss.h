@@ -28,15 +28,21 @@ struct HolgolQuery
 
 		if (!queryObject["timestamp"].is_null() && !queryObject["query"].is_null() && !queryObject["options"].is_null() && !queryObject["maxAnswers"].is_null())
 		{
-			query.timestamp = queryObject["timestamp"].as_int64();
-			query.query = strtostd(queryObject["query"].as_string());
-			query.maxAnswers = queryObject["maxAnswers"].as_int64();
-			query.options.clear();
-			boost::json::array jsonoptions = queryObject["options"].as_array();
+			if (queryObject["timestamp"].is_int64())
+				query.timestamp = queryObject["timestamp"].as_int64();
+			if (queryObject["query"].is_string())
+				query.query = strtostd(queryObject["query"].as_string());
+			if (queryObject["maxAnswers"].is_int64())
+				query.maxAnswers = queryObject["maxAnswers"].as_int64();
 
-			for (int i = 0; i < jsonoptions.size(); i++)
+			if (queryObject["options"].is_array())
 			{
-				query.options.push_back(strtostd(jsonoptions[i].as_string()));
+				query.options.clear();
+				boost::json::array jsonoptions = queryObject["options"].as_array();
+
+				for (int i = 0; i < jsonoptions.size(); i++)
+					if (jsonoptions[i].is_string())
+						query.options.push_back(strtostd(jsonoptions[i].as_string()));
 			}
 		}
 		else
@@ -78,7 +84,8 @@ struct HolgolVote
 			boost::json::array jsonchoices = voteObject["choices"].as_array();
 
 			for (int i = 0; i < jsonchoices.size(); i++)
-				vote.choices.push_back(jsonchoices[i].as_int64());
+				if (jsonchoices[i].is_int64())
+					vote.choices.push_back(jsonchoices[i].as_int64());
 		}
 
 		return vote;

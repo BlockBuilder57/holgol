@@ -92,6 +92,23 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 
 			if(query.timestamp != -1)
 			{
+				if (query.options.size() < 2 || query.options.size() > 8) {
+					std::cout << "rejecting query for too many or too few options\n";
+					break;
+				}
+
+				// check timestamp was created in last second
+				if (abs(difftime(query.timestamp, std::time(nullptr))) > 2) {
+					std::cout << "rejecting query for out of date timestamp\n";
+					break;
+				}
+
+				if (query.maxAnswers <= 0 || query.maxAnswers > query.options.size()) {
+					std::cout << "rejecting query for oob maxAnswers size\n";
+					break;
+				}
+
+				printf("new query:\n");
 				printf("\twhat's timestamp %d\n", query.timestamp);
 				printf("\twhat's query %s\n", query.query.c_str());
 				for(int i = 0; i < query.options.size(); i++)
@@ -99,13 +116,6 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 					printf("\twhat's options[%d] %s\n", i, query.options[i].c_str());
 				}
 				printf("\twhat's maxAnswers %d\n", query.maxAnswers);
-
-				// TODO future bugs for tomorrow that I am too tired to fix
-				// maxAnswers isn't checked and can be anything, including 0
-				// timestamp should be within the last few seconds (+-2s), just to keep things sane and semi-synced
-				// the true options size isn't constrained, only soft constrainted in the client UI
-				// winner with no votes is always 0, and winner with a tied vote is always 0
-				// these two can be handled in the same place
 
 				inQuery = true;
 				curQuery = query;
@@ -180,9 +190,14 @@ void HolgolWebsocketServer::VoteTimerFinished(const boost::system::error_code &e
 	curQuery.timestamp = -1;
 	inQuery = false;
 
+	int32_t winner = std::distance(tallies.begin(), std::max_element(tallies.begin(), tallies.end()));
+	
+	if (tallies[winner] == 0)
+		winner = -1;
+
 	boost::json::object obj;
 	obj["type"] = (uint32_t)HolgolMessageType::EndQuery;
-	obj["winner"] = std::distance(tallies.begin(), std::max_element(tallies.begin(), tallies.end()));
+	obj["winner"] = winner;
 
 	// this does make winner a double check,
 	// but that's probably a good thing for redundancy:tm:
