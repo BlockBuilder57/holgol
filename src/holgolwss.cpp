@@ -72,7 +72,8 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 
 	boost::json::value payload_value = boost::json::parse(message->get_payload(), ec);
 
-	if(ec) {
+	if(ec)
+	{
 		std::cout << "someone is being naughty: " << ec.message() << "\n";
 		return;
 	}
@@ -92,18 +93,21 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 
 			if(query.timestamp != -1)
 			{
-				if (query.options.size() < 2 || query.options.size() > 8) {
+				if(query.options.size() < 2 || query.options.size() > 8)
+				{
 					std::cout << "rejecting query for too many or too few options\n";
 					break;
 				}
 
 				// check timestamp was created in last second
-				if (abs(difftime(query.timestamp, std::time(nullptr))) > 2) {
+				if(abs(difftime(query.timestamp, std::time(nullptr))) > 2)
+				{
 					std::cout << "rejecting query for out of date timestamp\n";
 					break;
 				}
 
-				if (query.maxAnswers <= 0 || query.maxAnswers > query.options.size()) {
+				if(query.maxAnswers <= 0 || query.maxAnswers > query.options.size())
+				{
 					std::cout << "rejecting query for oob maxAnswers size\n";
 					break;
 				}
@@ -144,8 +148,12 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 				votes[handleaddr].choices = vote.choices;
 
 				for(auto choice : vote.choices)
+				{
 					if(choice < curQuery.options.size() && choice >= 0)
+					{
 						tallies[choice]++;
+					}
+				}
 
 				BroadcastTallies();
 			}
@@ -191,8 +199,8 @@ void HolgolWebsocketServer::VoteTimerFinished(const boost::system::error_code &e
 	inQuery = false;
 
 	int32_t winner = std::distance(tallies.begin(), std::max_element(tallies.begin(), tallies.end()));
-	
-	if (tallies[winner] == 0)
+
+	if(tallies[winner] == 0)
 		winner = -1;
 
 	boost::json::object obj;
@@ -203,7 +211,7 @@ void HolgolWebsocketServer::VoteTimerFinished(const boost::system::error_code &e
 	// but that's probably a good thing for redundancy:tm:
 	BroadcastTallies();
 	tallies.clear();
-	
+
 	BroadcastJSON(obj);
 }
 void HolgolWebsocketServer::CancelVote()

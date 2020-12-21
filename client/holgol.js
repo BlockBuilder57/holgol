@@ -5,49 +5,65 @@ holgol = {
 	websocket: null,
 
 	setup: function () {
+		holgol.connectWebSocket();
+		
+		// query
+		
+		holgol.query.query = $("#query");
+		holgol.query.queryEntry = setElemWithListener($("#queryEntry"), "change", holgol.query.updateUX);
+		holgol.query.queryRemoveOption = setElemWithListener($("#queryRemoveOption"), "click", holgol.query.removeOption);
+		holgol.query.queryAddOption = setElemWithListener($("#queryAddOption"), "click", holgol.query.addOption);
+		holgol.query.queryOptions = $("#queryOptions");
+		holgol.query.queryMaxAnswers = setElemWithListener($("#queryMaxAnswers"), "change", holgol.query.updateUX);
+		holgol.query.querySubmit = setElemWithListener($("#querySubmit"), "click", holgol.query.submit);
+		
+		holgol.query.addOption();
+		holgol.query.addOption();
+		
+		holgol.query.updateUX();
+		
+		// options
+		
+		holgol.options.options = $("#options");
+		holgol.options.optionsQuery = $("#optionsQuery");
+		holgol.options.optionsMaxAnswers = $("#optionsMaxAnswers");
+		holgol.options.optionsChoices = $("#optionsChoices");
+		holgol.options.optionsSubmit = setElemWithListener($("#optionsSubmit"), "click", holgol.options.submit);
+		
+		// this is default because the default state is no query
+		if (holgol.options.options)
+			holgol.options.options.style.display = "none";
+	},
+	
+	connectWebSocket: function () {
+		if (holgol.websocket)
+			holgol.websocket.close();
+		
 		holgol.websocket = new WebSocket("ws://localhost:5701");
 		holgol.websocket.binaryType = "arraybuffer";
 		
 		holgol.websocket.onopen = () => {holgol.logger("websocket connected");};
 		holgol.websocket.onclose = () => {holgol.logger("websocket disconnected");};
 		holgol.websocket.onmessage = holgol.onwsmessage;
-		
-		// query
-		
-		holgol.query.queryEntry = $("#queryEntry");
-		if (holgol.query.queryEntry)
-			holgol.query.queryEntry.addEventListener("change", holgol.query.updateUX);
-		
-		holgol.query.queryOptions = $("#queryOptions");
-		
-		holgol.query.queryRemoveOption = $("#queryRemoveOption");
-		if (holgol.query.queryRemoveOption)
-			holgol.query.queryRemoveOption.addEventListener("click", holgol.query.removeOption);
-		
-		holgol.query.queryAddOption = $("#queryAddOption");
-		if (holgol.query.queryAddOption)
-			holgol.query.queryAddOption.addEventListener("click", holgol.query.addOption);
-		
-		holgol.query.addOption();
-		holgol.query.addOption();
-		
-		holgol.query.queryMaxAnswers = $("#queryMaxAnswers");
-		if (holgol.query.queryMaxAnswers)
-			holgol.query.queryMaxAnswers.addEventListener("change", holgol.query.updateUX);
-		
-		holgol.query.querySubmit = $("#querySubmit");
-		if (holgol.query.querySubmit)
-			holgol.query.querySubmit.addEventListener("click", holgol.query.submit);
-		
-		holgol.query.updateUX();
-		
-		// options
-		
-		//holgol.options
 	},
 	
 	onwsmessage: function (message) {
-		holgol.logger("recieved " + message.data);
+		holgol.logger("received " + message.data);
+		
+		var data = tryParseJSON(message.data);
+		if (data && data.type != null) {
+			switch (data.type) {
+				case 0:
+					holgol.options.handleQuery(data.timestamp, data.query, data.options, data.maxAnswers);
+					break;
+				case 2:
+					holgol.options.handleTallies(data.tallies);
+					break;
+				case 3:
+					holgol.options.handleWinner(data.winner);
+					break;
+			}
+		}
 	},
 	
 	logger: function (message) {
@@ -57,15 +73,16 @@ holgol = {
 	},
 	
 	query: {
+		query: null,
 		queryEntry: null,
-		queryOptions: null,
 		queryRemoveOption: null,
 		queryAddOption: null,
+		queryOptions: null,
 		queryMaxAnswers: null,
 		querySubmit: null,
 		optionElements: [],
 		
-		removeOption: function (count) {
+		removeOption: function () {
 			if (holgol.query.optionElements.length > 2 && holgol.query.queryOptions) {
 				holgol.query.queryOptions.removeChild(holgol.query.optionElements.pop());
 			}
@@ -73,8 +90,8 @@ holgol = {
 			holgol.query.updateUX();
 		},
 		
-		addOption: function (count) {
-			if (holgol.query.optionElements.length < 8 &&holgol.query.queryOptions) {
+		addOption: function () {
+			if (holgol.query.optionElements.length < 8 && holgol.query.queryOptions) {
 				var option = $rr("input").withAttrib("type", "text").withClass("queryOption");
 				option.withAttrib("placeholder", `Option ${holgol.query.optionElements.length+1}`);
 				option.addEventListener("change", holgol.query.updateUX);
@@ -136,7 +153,133 @@ holgol = {
 	},
 	
 	options: {
+		options: null,
+		optionsQuery: null,
+		optionsMaxAnswers: null,
+		optionsChoices: null,
+		optionsSubmit: null,
 		
+		optionElements: [],
+		choices: [],
+		
+		curQuery: null,
+		curTallies: null,
+		hasSubmitted: false,
+		
+		addOption: function (text) {
+			var option = $rr("div").withClass("optionChoice")
+			option.addEventListener("click", holgol.options.selectChoice);
+			var textdisplay = $rr("p").withText(text);
+			var tallycount = $rr("p").withText("0");
+			
+			option.apndChain(textdisplay).apndChain(tallycount);
+			holgol.options.optionsChoices.appendChild(option);
+			holgol.options.optionElements.push(option);
+		},
+		
+		handleQuery: function (timestamp, query, options, maxAnswers) {
+			if (parseInt(Date.now() / 1000) - timestamp > 45)
+				return;
+			if (isNullOrWhitespace(query))
+				return;
+			if (!Array.isArray(options))
+				return;
+			if (maxAnswers <= 0 || maxAnswers > options.length)
+				return;
+			
+			if (optionsQuery)
+				optionsQuery.innerText = query;
+			if (optionsMaxAnswers)
+				optionsMaxAnswers.innerText = maxAnswers == 1 ? "~ choose one ~ " : `~ choose up to ${maxAnswers} ~`;
+			
+			if (optionsChoices) {
+				holgol.options.optionsChoices.textContent = '';
+				
+				for (var i = 0; i < options.length; i++) {
+					holgol.options.addOption(options[i]);
+				}
+			}
+			
+			holgol.options.curQuery = {timestamp: timestamp, query: query, options: options, maxAnswers: maxAnswers}
+			
+			if (holgol.query.query)
+				holgol.query.query.style.display = "none";
+			if (holgol.options.options)
+				holgol.options.options.style.display = "";
+		},
+		
+		handleTallies: function (tallies) {
+			if (tallies.length != holgol.options.optionElements.length)
+				return;
+			
+			holgol.options.curTallies = tallies;
+			
+			for (var i = 0; i < holgol.options.optionElements.length; i++) {
+				var option = holgol.options.optionElements[i];
+				option.children[1].innerText = tallies[i];
+			}
+		},
+		
+		handleWinner: function (winner) {
+			if (holgol.query.query)
+				holgol.query.query.style.display = "";
+			if (holgol.options.options)
+				holgol.options.options.style.display = "none";
+			
+			if (winner != -1)
+				holgol.logger(`[temporary] the winner of "${holgol.options.curQuery.query}" was "${holgol.options.curQuery.options[winner]}" with ${holgol.options.curTallies[winner]} vote(s)`);
+			else
+				holgol.logger(`[temporary] nobody voted on "${holgol.options.curQuery.query}"`);
+			
+			// why do I have to clear arrays like this
+			holgol.options.optionElements.length = 0;
+			holgol.options.choices.length = 0;
+			
+			holgol.options.hasSubmitted = false;
+			if (holgol.options.optionsSubmit)
+				holgol.options.optionsSubmit.style.display = "";
+		},
+		
+		selectChoice: function (e) {
+			if (holgol.options.hasSubmitted)
+				return;
+			
+			var index = holgol.options.optionElements.indexOf(e.currentTarget);
+			
+			if (holgol.options.choices.indexOf(index) != -1) {
+				holgol.options.choices.splice(holgol.options.choices.indexOf(index), 1);
+				return;
+			}
+			
+			if (holgol.options.choices.length >= holgol.options.curQuery.maxAnswers)
+				holgol.options.choices.shift();
+			holgol.options.choices.push(index);
+			
+			holgol.options.updateUX();
+		},
+		
+		submit: function () {
+			var message = { type: 1, choices: holgol.options.choices };
+
+			if (message.choices.length > 0 && holgol.websocket) {
+				holgol.websocket.send(JSON.stringify(message));
+				holgol.logger("sent " + JSON.stringify(message));
+				
+				holgol.options.hasSubmitted = true;
+				if (holgol.options.optionsSubmit)
+					holgol.options.optionsSubmit.style.display = "none";
+			}
+		},
+		
+		updateUX: function () {
+			for (var i = 0; i < holgol.options.optionElements.length; i++) {
+				var option = holgol.options.optionElements[i];
+				option.classList.remove("choiceSelected");
+				
+				if (holgol.options.choices.indexOf(i) != -1)
+					option.classList.add("choiceSelected");
+			}
+		}
 	}
 }
 
@@ -144,5 +287,25 @@ holgol = {
 function isNullOrWhitespace (input) {
 	return !input || !input.trim();
 }
+
+function setElemWithListener (element, listener, func) {
+	if (element)
+		element.addEventListener(listener, func);
+	return element;
+}
+
+// https://stackoverflow.com/a/20392392
+function tryParseJSON (jsonString) {
+	try {
+		var o = JSON.parse(jsonString);
+		
+		if (o && typeof o === "object") {
+			return o;
+		}
+	}
+	catch (e) { }
+
+	return false;
+};
 
 document.addEventListener("DOMContentLoaded", holgol.setup);
