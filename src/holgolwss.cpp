@@ -47,13 +47,14 @@ void HolgolWebsocketServer::OnClose(websocketpp::connection_hdl handle)
 	{
 		boost::asio::ip::address handleaddr = GetIPAddress(handle);
 
-		if(votes.find(handleaddr) == votes.end())
+		if(votes.find(handleaddr) != votes.end())
 		{
 			for(auto choice : votes[handleaddr].choices)
 				if(choice < curQuery.options.size() && choice >= 0)
 					tallies[choice]--;
 
 			votes.erase(handleaddr);
+			BroadcastTallies();
 		}
 
 		std::cout << "user had votes, subtracting\n";
@@ -148,12 +149,8 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 				votes[handleaddr].choices = vote.choices;
 
 				for(auto choice : vote.choices)
-				{
 					if(choice < curQuery.options.size() && choice >= 0)
-					{
 						tallies[choice]++;
-					}
-				}
 
 				BroadcastTallies();
 			}

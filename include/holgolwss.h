@@ -58,14 +58,15 @@ struct HolgolQuery
 
 		queryObject["timestamp"] = timestamp;
 		queryObject["query"] = query;
-		queryObject["maxAnswers"] = maxAnswers;
+		
 		boost::json::array jsonoptions;
-
 		for(int i = 0; i < options.size(); i++)
 		{
 			jsonoptions.emplace_back(options[i]);
 		}
 		queryObject["options"] = jsonoptions;
+
+		queryObject["maxAnswers"] = maxAnswers;
 
 		return queryObject;
 	}

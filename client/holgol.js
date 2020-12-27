@@ -3,9 +3,15 @@
 
 holgol = {
 	websocket: null,
+	debuglogElem: null,
+	messageElem: null,
 
 	setup: function () {
 		holgol.connectWebSocket();
+		if ($("#debuglog"))
+			holgol.debuglogElem = $("#debuglog");
+		if ($("#message"))
+			holgol.messageElem = $("#message");
 		
 		// query
 		
@@ -42,13 +48,13 @@ holgol = {
 		holgol.websocket = new WebSocket("ws://localhost:5701");
 		holgol.websocket.binaryType = "arraybuffer";
 		
-		holgol.websocket.onopen = () => {holgol.logger("websocket connected");};
-		holgol.websocket.onclose = () => {holgol.logger("websocket disconnected");};
+		holgol.websocket.onopen = () => {holgol.message("WebSocket connected!");};
+		holgol.websocket.onclose = () => {holgol.message("WebSocket disconnected! Retry in a little bit...");};
 		holgol.websocket.onmessage = holgol.onwsmessage;
 	},
 	
 	onwsmessage: function (message) {
-		holgol.logger("received " + message.data);
+		holgol.debuglog("received " + message.data);
 		
 		var data = tryParseJSON(message.data);
 		if (data && data.type != null) {
@@ -66,10 +72,15 @@ holgol = {
 		}
 	},
 	
-	logger: function (message) {
+	debuglog: function (message) {
 		console.log(message)
-		if ($("#log"))
-			$("#log").innerText = message.toString();
+		if (holgol.debuglogElem)
+			holgol.debuglogElem.innerText = message.toString();
+	},
+	
+	message: function (message) {
+		if (holgol.messageElem)
+			holgol.messageElem.innerText = message.toString();
 	},
 	
 	query: {
@@ -136,17 +147,19 @@ holgol = {
 			var message = { type: 0, timestamp: parseInt(Date.now() / 1000) };
 			
 			message.query = holgol.query.queryEntry.value;
+			holgol.query.queryEntry.value = ""
 			
 			message.options = [];
 			holgol.query.optionElements.forEach((x) => {
 				if (!isNullOrWhitespace(x.value))
 					message.options.push(x.value);
+				x.value = "";
 			});
 			message.maxAnswers = parseInt(holgol.query.queryMaxAnswers.value);
 
 			if (message.options.length >= 2 && holgol.websocket) {
 				holgol.websocket.send(JSON.stringify(message));
-				holgol.logger("sent " + JSON.stringify(message));
+				holgol.debuglog("sent " + JSON.stringify(message));
 			}
 		}
 		
@@ -165,12 +178,13 @@ holgol = {
 		curQuery: null,
 		curTallies: null,
 		hasSubmitted: false,
+		timerInterval: null,
 		
 		addOption: function (text) {
-			var option = $rr("div").withClass("optionChoice")
+			var option = $rr("a").withClass("optionChoice")
 			option.addEventListener("click", holgol.options.selectChoice);
-			var textdisplay = $rr("p").withText(text);
-			var tallycount = $rr("p").withText("0");
+			var textdisplay = $rr("p").withClass("optionChoiceText").withText(text);
+			var tallycount = $rr("p").withClass("optionChoiceTally").withText(0);
 			
 			option.apndChain(textdisplay).apndChain(tallycount);
 			holgol.options.optionsChoices.appendChild(option);
@@ -202,6 +216,9 @@ holgol = {
 			
 			holgol.options.curQuery = {timestamp: timestamp, query: query, options: options, maxAnswers: maxAnswers}
 			
+			holgol.options.timerInterval = setInterval(holgol.options.updateTimeLeft, 500);
+			holgol.options.updateTimeLeft();
+			
 			if (holgol.query.query)
 				holgol.query.query.style.display = "none";
 			if (holgol.options.options)
@@ -227,13 +244,15 @@ holgol = {
 				holgol.options.options.style.display = "none";
 			
 			if (winner != -1)
-				holgol.logger(`[temporary] the winner of "${holgol.options.curQuery.query}" was "${holgol.options.curQuery.options[winner]}" with ${holgol.options.curTallies[winner]} vote(s)`);
+				holgol.message(`The winner of "${holgol.options.curQuery.query}" was "${holgol.options.curQuery.options[winner]}" with ${holgol.options.curTallies[winner]} vote(s)`);
 			else
-				holgol.logger(`[temporary] nobody voted on "${holgol.options.curQuery.query}"`);
+				holgol.message(`Nobody voted on "${holgol.options.curQuery.query}"...`);
 			
 			// why do I have to clear arrays like this
 			holgol.options.optionElements.length = 0;
 			holgol.options.choices.length = 0;
+			
+			clearInterval(holgol.options.timerInterval);
 			
 			holgol.options.hasSubmitted = false;
 			if (holgol.options.optionsSubmit)
@@ -263,22 +282,33 @@ holgol = {
 
 			if (message.choices.length > 0 && holgol.websocket) {
 				holgol.websocket.send(JSON.stringify(message));
-				holgol.logger("sent " + JSON.stringify(message));
+				holgol.debuglog("sent " + JSON.stringify(message));
 				
 				holgol.options.hasSubmitted = true;
 				if (holgol.options.optionsSubmit)
 					holgol.options.optionsSubmit.style.display = "none";
 			}
+			
+			holgol.options.updateUX();
 		},
 		
 		updateUX: function () {
 			for (var i = 0; i < holgol.options.optionElements.length; i++) {
 				var option = holgol.options.optionElements[i];
-				option.classList.remove("choiceSelected");
+				option.classList.remove("optionChoiceSelected");
+				option.classList.remove("optionChoiceLocked");
 				
 				if (holgol.options.choices.indexOf(i) != -1)
-					option.classList.add("choiceSelected");
+					option.classList.add("optionChoiceSelected");
+				if (holgol.options.hasSubmitted)
+					option.classList.add("optionChoiceLocked");
 			}
+		},
+		
+		updateTimeLeft: function () {
+			// this will eventually not be hardcoded but shhh
+			var time = (holgol.options.curQuery.timestamp + 45) - Date.now()/1000;
+			holgol.message(`${parseInt(time)} second(s) left`);
 		}
 	}
 }
