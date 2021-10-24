@@ -1,0 +1,28 @@
+client sends
+	{"type":0,"timestamp":1608351939,"query":"how to purchase","options":["ebay","google"],"maxAnswers":1}
+	
+server is waiting for a thing so it's accepted
+server then broadcasts
+	{"type":0,"timestamp":1608351939,"query":"how to purchase","options":["ebay","google"],"maxAnswers":1}
+keep in mind timestamp is the same to make sure all client are synced up
+
+clients will then send
+	{"type":1,"choices":[2]}
+or, if multiple,
+	{"type":1,"choices":[2,1,...,3]}
+
+server will then store user's vote in a map
+when a handle is dropped, it gets removed from the map
+this could also be ip based but it doesn't really matter for the scope of this
+
+vote is checked to be good
+server then broadcasts
+	{"type":2,"tallies":[0,0,1]}
+these are total counts of all the votes, serverside
+that way every client is synced up
+
+after vote is over
+server then broadcasts
+	{"type":3,"winner":2,"votes":1}
+this is the end packet, query is then opened for anyone again
+obviously people can just unhide the div but the server will completely ignore the packet if it gets sent while a vote is underway

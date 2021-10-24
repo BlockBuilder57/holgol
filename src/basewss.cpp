@@ -34,6 +34,10 @@ void BaseWebsocketServer::Start(uint16_t port)
 	_server.set_open_handler(std::bind(&BaseWebsocketServer::OnOpen, this, _1));
 	_server.set_message_handler(std::bind(&BaseWebsocketServer::OnMessage, this, _1, _2));
 	_server.set_close_handler(std::bind(&BaseWebsocketServer::OnClose, this, _1));
+	
+	// this avoids "Underlying Transport Error" if someone is trying to connect to the server
+	// when the server is starting.
+	_server.set_reuse_addr(true);
 
 	_server.listen(port);
 	_server.start_accept();

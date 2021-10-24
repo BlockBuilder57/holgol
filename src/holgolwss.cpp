@@ -101,9 +101,10 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 				}
 
 				// check timestamp was created in last second
-				if(abs(difftime(query.timestamp, std::time(nullptr))) > 2)
+				if(auto n = abs(difftime(query.timestamp, std::time(nullptr))); n > 2)
 				{
 					std::cout << "rejecting query for out of date timestamp\n";
+					printf("abs(difftime(%ld, %ld): %d", query.timestamp, std::time(nullptr), n);
 					break;
 				}
 
@@ -114,13 +115,13 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 				}
 
 				printf("new query:\n");
-				printf("\twhat's timestamp %d\n", query.timestamp);
+				printf("\twhat's timestamp %ld\n", query.timestamp);
 				printf("\twhat's query %s\n", query.query.c_str());
 				for(int i = 0; i < query.options.size(); i++)
 				{
 					printf("\twhat's options[%d] %s\n", i, query.options[i].c_str());
 				}
-				printf("\twhat's maxAnswers %d\n", query.maxAnswers);
+				printf("\twhat's maxAnswers %ld\n", query.maxAnswers);
 
 				inQuery = true;
 				curQuery = query;
