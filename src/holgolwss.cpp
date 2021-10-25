@@ -99,14 +99,19 @@ void HolgolWebsocketServer::OnOpen(websocketpp::connection_hdl handle)
 {
 	BaseWebsocketServer::OnOpen(handle);
 
-	std::cout << "user connected with ip" << GetIPAddress(handle).to_string() << " \n";
+	std::cout << "User connected with IP " << GetIPAddress(handle).to_string() << " " << std::endl;
 
 	if(inQuery)
 	{
+		// Send them the current query and vote tallies
+		// if they join mid-query.
+
 		SendJSON(handle, curQuery.toJSONObject());
 		SendTallies(handle);
 
-		std::cout << "in a query, sent them the current query and votes\n";
+#ifdef _DEBUG
+		std::cout << "in a query, sent them the current query and votes" << std::endl;
+#endif
 	}
 }
 
@@ -114,7 +119,7 @@ void HolgolWebsocketServer::OnClose(websocketpp::connection_hdl handle)
 {
 	BaseWebsocketServer::OnClose(handle);
 
-	std::cout << "user left with ip" << GetIPAddress(handle).to_string() << " \n";
+	std::cout << "User left with IP address " << GetIPAddress(handle).to_string() << " \n";
 
 	if(inQuery)
 	{
@@ -122,6 +127,8 @@ void HolgolWebsocketServer::OnClose(websocketpp::connection_hdl handle)
 
 		if(votes.find(handleaddr) != votes.end())
 		{
+			std::cout << "User had votes, subtracting\n";
+
 			for(auto choice : votes[handleaddr].choices)
 				if(choice < curQuery.options.size() && choice >= 0)
 					tallies[choice]--;
@@ -130,7 +137,6 @@ void HolgolWebsocketServer::OnClose(websocketpp::connection_hdl handle)
 			BroadcastTallies();
 		}
 
-		std::cout << "user had votes, subtracting\n";
 	}
 }
 
@@ -145,9 +151,12 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 
 	boost::json::value payload_value = boost::json::parse(message->get_payload(), ec);
 
+	// All of our packets are JSON.
+	// If someone sends invalid data, then they are probably up to no good.
 	if(ec)
 	{
-		std::cout << "someone is being naughty: " << ec.message() << "\n";
+		std::cout << "Someone is being naughty (JSON parsing failure): " << ec.message() << "\n";	
+		InvalidDataClose(handle);
 		return;
 	}
 
@@ -168,21 +177,21 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 			{
 				if(query.options.size() < 2 || query.options.size() > 8)
 				{
-					std::cout << "rejecting query for too many or too few options\n";
+					std::cout << "Rejecting query for too many or too few options" << std::endl;
 					break;
 				}
 
 				// check timestamp was created in last second
 				if(auto n = abs(difftime(query.timestamp, std::time(nullptr))); n > 2)
 				{
-					std::cout << "rejecting query for out of date timestamp\n";
+					std::cout << "Rejecting query for out of date timestamp" << std::endl;
 					printf("abs(difftime(%ld, %ld): %d", query.timestamp, std::time(nullptr), n);
 					break;
 				}
 
 				if(query.maxAnswers <= 0 || query.maxAnswers > query.options.size())
 				{
-					std::cout << "rejecting query for oob maxAnswers size\n";
+					std::cout << "Rejecting query for oob maxAnswers size" << std::endl;
 					break;
 				}
 
@@ -236,11 +245,29 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 			break;
 		}
 		default:
-			std::cout << "unhandled/invalid type, someone is being very naughty\n";
+#ifdef _DEBUG
+			std::cout << "Unhandled/invalid type, someone is being very naughty" << std::endl;
+#else
+			return;
+#endif
 		}
 	}
-	else
-		std::cout << "someone is being naughty\n";
+	else { 
+		// If this is missing from our JSON 
+		//std::cout << "someone is being naughty\n";
+		
+		InvalidDataClose(handle);
+	}
+}
+
+void HolgolWebsocketServer::InvalidDataClose(websocketpp::connection_hdl handle) {
+		websocketpp::lib::error_code ec;
+		auto con = _server.get_con_from_hdl(handle, ec);
+
+		if (ec)
+			return;
+
+		con->close(websocketpp::close::status::normal, "stop trying to hack my shit");
 }
 
 boost::json::object HolgolWebsocketServer::MakeTallies()

@@ -114,6 +114,8 @@ public:
 
 private:
 
+	void InvalidDataClose(websocketpp::connection_hdl);
+
 	const static uint64_t VoteTime;
 
 	// active when a vote is in progress,

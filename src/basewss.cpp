@@ -20,6 +20,9 @@ boost::asio::ip::address BaseWebsocketServer::GetIPAddress(websocketpp::connecti
 	if(ec)
 		std::cout << "somehow failed at getting an IP address: too bad!";
 
+	if (con->under_proxy)
+		return con->proxy_realip;
+
 	return con->get_raw_socket().remote_endpoint().address();
 }
 
@@ -30,6 +33,48 @@ void BaseWebsocketServer::Start(uint16_t port)
 	_server.clear_error_channels(websocketpp::log::elevel::all);
 
 	_server.init_asio(&context);
+
+	_server.set_validate_handler([this](websocketpp::connection_hdl handle) {
+		websocketpp::lib::error_code ec;
+		auto con_ptr = _server.get_con_from_hdl(handle, ec);
+
+		// there are probably bigger problems if this fails
+		if (ec)
+			return false;
+
+		// other headers should probably be added, but I am too lazy to atm
+		// at least i have the framework here to do so
+		for(const auto& header : { "X-Real-IP" }) {
+			auto realip = con_ptr->get_request_header(header);
+
+			if(!realip.empty()) {
+				boost::system::error_code asio_ec;
+
+				con_ptr->under_proxy = true;
+				con_ptr->proxy_realip = boost::asio::ip::make_address(realip, asio_ec);
+
+				// even though most proxying web servers disallow users sending these
+				// headers it's still a good idea to not allow it
+				if (asio_ec)
+					return false;
+				break;
+			}
+		}
+
+		return true;
+	});
+
+	_server.set_http_handler([this](websocketpp::connection_hdl handle) {
+		websocketpp::lib::error_code ec;
+		auto con_ptr = _server.get_con_from_hdl(handle, ec);
+
+		// there are probably bigger problems if this fails
+		if (ec)
+			return;
+
+		con_ptr->set_body("there is nothing here for you, go back");
+		con_ptr->set_status(websocketpp::http::status_code::ok);
+	});
 
 	_server.set_open_handler(std::bind(&BaseWebsocketServer::OnOpen, this, _1));
 	_server.set_message_handler(std::bind(&BaseWebsocketServer::OnMessage, this, _1, _2));
@@ -45,8 +90,6 @@ void BaseWebsocketServer::Start(uint16_t port)
 	// eventually multithread this
 	OnStart();
 
-	// asio event loop
-	_server.run();
 }
 
 void BaseWebsocketServer::OnOpen(websocketpp::connection_hdl handle)
