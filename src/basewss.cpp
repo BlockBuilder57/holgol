@@ -63,7 +63,7 @@ void BaseWebsocketServer::OnMessage(websocketpp::connection_hdl handle, message_
 {
 }
 
-void BaseWebsocketServer::Send(websocketpp::connection_hdl handle, std::string message)
+void BaseWebsocketServer::Send(websocketpp::connection_hdl handle, const std::string& message)
 {
 	websocketpp::lib::error_code ec;
 	server::connection_ptr con = _server.get_con_from_hdl(handle, ec);
@@ -74,12 +74,12 @@ void BaseWebsocketServer::Send(websocketpp::connection_hdl handle, std::string m
 	con->send(message);
 }
 
-void BaseWebsocketServer::SendJSON(websocketpp::connection_hdl handle, boost::json::object obj)
+void BaseWebsocketServer::SendJSON(websocketpp::connection_hdl handle, const boost::json::object& obj)
 {
 	Send(handle, boost::json::serialize(obj));
 }
 
-void BaseWebsocketServer::Broadcast(std::string message)
+void BaseWebsocketServer::Broadcast(const std::string& message)
 {
 	if(message.empty())
 		return;
@@ -92,7 +92,9 @@ void BaseWebsocketServer::Broadcast(std::string message)
 	}
 }
 
-void BaseWebsocketServer::BroadcastJSON(boost::json::object obj)
+// TODO for binary: overloads of Send and Broadcast() that takes a span<byte>
+
+void BaseWebsocketServer::BroadcastJSON(const boost::json::object& obj)
 {
 	Broadcast(boost::json::serialize(obj));
 }

@@ -24,12 +24,12 @@ struct BaseWebsocketServer
 	virtual void OnMessage(websocketpp::connection_hdl handle, message_ptr message) = 0;
 	
 	// send to specific user
-	void Send(websocketpp::connection_hdl handle, std::string message);
-	void SendJSON(websocketpp::connection_hdl handle, boost::json::object obj);
+	void Send(websocketpp::connection_hdl handle, const std::string& message);
+	void SendJSON(websocketpp::connection_hdl handle, const boost::json::object& obj);
 
 	// broadcast to all users
-	void Broadcast(std::string message);
-	void BroadcastJSON(boost::json::object obj);
+	void Broadcast(const std::string& message);
+	void BroadcastJSON(const boost::json::object& obj);
 	
 protected: // inheriters would want this
 

@@ -1,5 +1,6 @@
 #pragma once
 #include <basewss.h>
+#include <consoleinteraction.h>
 #include <boost/asio/steady_timer.hpp>
 
 inline std::string strtostd(boost::json::string &str)
@@ -21,6 +22,8 @@ struct HolgolQuery
 	std::string query;
 	std::vector<std::string> options;
 	int64_t maxAnswers;
+
+	boost::asio::ip::address ip;
 
 	static HolgolQuery fromJSONObject(boost::json::object &queryObject)
 	{
@@ -101,6 +104,13 @@ public:
 
 	void CancelVote();
 
+	inline bool InQuery() const { return inQuery; }
+
+	// only valid if InQuery() == true
+
+	inline HolgolQuery& GetQuery() { return curQuery; }
+
+	inline std::vector<uint32_t>& GetVoteTallies() { return tallies; }
 
 private:
 
@@ -111,7 +121,9 @@ private:
 	boost::asio::steady_timer voteTimer;
 
 	// true if a vote is in progress
-	bool inQuery = false;
+	bool inQuery{false};
+
+	bool forceEnd{false};
 
 	HolgolQuery curQuery{};
 	std::map<boost::asio::ip::address, HolgolVote> votes{};

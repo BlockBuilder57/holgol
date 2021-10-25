@@ -1,9 +1,82 @@
 #include <holgolwss.h>
 
+#include <consoleinteraction.h>
+
 #include <ctime>
 #include <vector>
 #include <set>
 #include <cstdint>
+
+// This is only for commands to use to reference the one and true
+// holgol server instance, without having to make a GetHolgol() function
+// or something like that. Don't use it in class code.
+extern HolgolWebsocketServer g_holgol;
+extern std::uint16_t g_port;
+
+struct StatusCommand : public ConsoleCommand
+{
+
+	void Invoke() override
+	{
+		std::cout << "Server status: Running (on port " << g_port << ")" << std::endl;
+		std::cout << "Server in query: " << std::boolalpha << g_holgol.InQuery() << std::endl;
+
+		if(g_holgol.InQuery()) {
+			// provide a "fancy" output of the current query stats
+
+			auto& query = g_holgol.GetQuery();
+			auto& tallies = g_holgol.GetVoteTallies();
+			
+			std::cout << "\t\b\b\b\bQuery: " << std::quoted(query.query) << std::endl;
+			std::cout << "\t\b\b\b\bQuery Creator IP: " << query.ip.to_string() << std::endl;
+			std::cout << "\t\b\b\b\bTimestamp: " << query.timestamp << std::endl; // todo: strftime?
+			std::cout << "\t\b\b\b\bMax answers: " << query.maxAnswers << std::endl;
+			std::cout << "\t\b\b\b\bOptions: " << std::endl;
+
+			for (std::size_t i = 0; i < query.options.size(); ++i)
+				std::cout << "\t" << query.options[i] << ": " << tallies[i] << " votes " << std::endl;
+		}
+	}
+
+	std::string GetName() override
+	{
+		return "status";
+	}
+
+	std::string GetDescription() override
+	{
+		return "Outputs the current server status.";
+	}
+};
+
+struct EndQueryCommand : public ConsoleCommand
+{
+
+	void Invoke() override
+	{
+		if(!g_holgol.InQuery())
+		{
+			std::cout << "Can't end a query if there's no query active, silly!\n";
+			return;
+		}
+		g_holgol.CancelVote();
+		std::cout << "Ended query by force. Have mercy on me.\n";
+	}
+
+	std::string GetName() override
+	{
+		return "endquery";
+	}
+
+	std::string GetDescription() override
+	{
+		return "Ends the current query.";
+	}
+};
+
+// static console register doodads go here.
+static ConsoleCommandRegisterHelper<StatusCommand> _status_register;
+static ConsoleCommandRegisterHelper<EndQueryCommand> _endquery_register;
 
 HolgolWebsocketServer::HolgolWebsocketServer(boost::asio::io_context &context)
 	: BaseWebsocketServer(context), voteTimer(context)
@@ -63,13 +136,12 @@ void HolgolWebsocketServer::OnClose(websocketpp::connection_hdl handle)
 
 void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, message_ptr message)
 {
-	std::cout << "user sent a message\n";
-
 	// if it's not binary throw it out
 	if(message->get_opcode() != websocketpp::frame::opcode::text)
 		return;
 
 	boost::system::error_code ec;
+
 
 	boost::json::value payload_value = boost::json::parse(message->get_payload(), ec);
 
@@ -114,9 +186,14 @@ void HolgolWebsocketServer::OnMessage(websocketpp::connection_hdl handle, messag
 					break;
 				}
 
+				// tie query creator ip
+				query.ip = GetIPAddress(handle);
+
 				printf("new query:\n");
 				printf("\twhat's timestamp %ld\n", query.timestamp);
 				printf("\twhat's query %s\n", query.query.c_str());
+				printf("\twhat's the creator %s\n", query.ip.to_string().c_str());
+
 				for(int i = 0; i < query.options.size(); i++)
 				{
 					printf("\twhat's options[%d] %s\n", i, query.options[i].c_str());
@@ -192,18 +269,35 @@ void HolgolWebsocketServer::BroadcastTallies()
 
 void HolgolWebsocketServer::VoteTimerFinished(const boost::system::error_code &ec)
 {
-	std::cout << "vote naturally finished\n";
-	curQuery.timestamp = -1;
-	inQuery = false;
+	if(ec)
+		std::cout << "timer errored: " << ec.message() << '\n';
 
-	int32_t winner = std::distance(tallies.begin(), std::max_element(tallies.begin(), tallies.end()));
-
-	if(tallies[winner] == 0)
-		winner = -1;
+	if (ec.value() == boost::asio::error::operation_aborted)
+		forceEnd = true;
 
 	boost::json::object obj;
 	obj["type"] = (uint32_t)HolgolMessageType::EndQuery;
+
+	int32_t winner = -1;
+	if(!forceEnd)
+	{
+		winner = std::distance(tallies.begin(), std::max_element(tallies.begin(), tallies.end()));
+
+		if(tallies[winner] == 0)
+			winner = -1;
+	}
+
 	obj["winner"] = winner;
+
+	std::cout << "vote finished\n";
+
+	// Reset all important state back to defaults
+
+	curQuery.timestamp = -1;
+	inQuery = false;
+
+	if(forceEnd)
+		forceEnd = false;
 
 	// this does make winner a double check,
 	// but that's probably a good thing for redundancy:tm:
@@ -212,12 +306,10 @@ void HolgolWebsocketServer::VoteTimerFinished(const boost::system::error_code &e
 
 	BroadcastJSON(obj);
 }
+
 void HolgolWebsocketServer::CancelVote()
 {
 	std::cout << "force cancelling vote\n";
-	boost::system::error_code ec;
-	VoteTimerFinished(ec);
-
-	if(ec)
-		std::cout << "somehow errored when cancelling the vote\n";
+	//forceEnd = true;
+	voteTimer.cancel();
 }

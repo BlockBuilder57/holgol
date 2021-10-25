@@ -4,8 +4,10 @@ set(HOLGOL_SERVER_SOURCES
 	basewss.cpp
 	main.cpp
 	holgolwss.cpp
+	consoleinteraction.cpp
 	${PROJECT_SOURCE_DIR}/include/basewss.h
 	${PROJECT_SOURCE_DIR}/include/holgolwss.h
+	${PROJECT_SOURCE_DIR}/include/consoleinteraction.h
 )
 
 add_executable(holgol_server ${HOLGOL_SERVER_SOURCES})
